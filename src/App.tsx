@@ -17,6 +17,7 @@ import { useUpdateStore } from "./stores/useUpdateStore";
 import { initActivityListener, stopActivityListener } from "./stores/useActivityStore";
 import { UpdateNotification } from "./components/update/UpdateNotification";
 import { GitGraphPanel } from "./components/git/GitGraphPanel";
+import type { GitPanelTab } from "./components/git/GitPanelTabs";
 import { BottomBar } from "./components/shared/BottomBar";
 import { FDADialog } from "./components/shared/FDADialog";
 import { MultiProjectView, type MultiProjectViewHandle } from "./components/shared/MultiProjectView";
@@ -54,6 +55,7 @@ function App() {
   const multiProjectRef = useRef<MultiProjectViewHandle>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
+  const [gitPanelTab, setGitPanelTab] = useState<GitPanelTab>("status");
   const [sessionCounts, setSessionCounts] = useState<Map<string, { slotCount: number; launchedCount: number }>>(new Map());
   const [isStoppingAll, setIsStoppingAll] = useState(false);
   const [currentBranch, setCurrentBranch] = useState<string | undefined>(undefined);
@@ -320,7 +322,14 @@ function App() {
   }, []);
 
   const handleToggleSidebar = useCallback(() => setSidebarOpen((prev) => !prev), []);
-  const handleToggleGitPanel = useCallback(() => setGitPanelOpen((prev) => !prev), []);
+  // Ctrl/Cmd+2 always lands the panel on the Status tab when toggling open.
+  // Manual tab switches while the panel is open are preserved until the next open.
+  const handleToggleGitPanel = useCallback(() => {
+    setGitPanelOpen((prev) => {
+      if (!prev) setGitPanelTab("status");
+      return !prev;
+    });
+  }, []);
 
   useAppKeyboard({
     onAddSession: handleAddSessionShortcut,
@@ -457,6 +466,8 @@ function App() {
               repositories={activeTab?.repositories ?? []}
               workspaceType={activeTab?.workspaceType ?? "single-repo"}
               onRepoChange={(path) => activeTab && setSelectedRepo(activeTab.id, path)}
+              activeTab={gitPanelTab}
+              onActiveTabChange={setGitPanelTab}
             />
           </div>
 

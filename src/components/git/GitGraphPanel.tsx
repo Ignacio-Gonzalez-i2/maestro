@@ -20,6 +20,10 @@ interface GitGraphPanelProps {
   repositories: RepositoryInfo[];
   workspaceType: WorkspaceType;
   onRepoChange: (repoPath: string) => void;
+  /** Currently active tab. Lifted to the parent so the Ctrl+2 shortcut can
+   *  force a specific tab whenever it toggles the panel open. */
+  activeTab: GitPanelTab;
+  onActiveTabChange: (tab: GitPanelTab) => void;
 }
 
 export function GitGraphPanel({
@@ -30,12 +34,14 @@ export function GitGraphPanel({
   repositories,
   workspaceType,
   onRepoChange,
+  activeTab,
+  onActiveTabChange,
 }: GitGraphPanelProps) {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedPRNumber, setSelectedPRNumber] = useState<number | null>(null);
   const [selectedIssueNumber, setSelectedIssueNumber] = useState<number | null>(null);
   const [selectedDiscussionNumber, setSelectedDiscussionNumber] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<GitPanelTab>("status");
+  const setActiveTab = onActiveTabChange;
 
   const { checkoutBranch, createBranch } = useGitStore();
   const {
