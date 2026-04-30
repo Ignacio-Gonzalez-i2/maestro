@@ -542,6 +542,20 @@ export const TerminalView = memo(function TerminalView({
           return false;
         }
 
+        // Cmd/Ctrl+1 (toggle maximize) and Cmd/Ctrl+2 (toggle git panel):
+        // block xterm so it doesn't send the corresponding control byte (NUL/SOH) to PTY.
+        // Use event.code for layout independence; event.key may differ on AZERTY etc.
+        if (
+          (event.code === "Digit1" || event.code === "Digit2" ||
+           event.code === "Numpad1" || event.code === "Numpad2") &&
+          (event.metaKey || event.ctrlKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.type === "keydown"
+        ) {
+          return false;
+        }
+
         // Cmd/Ctrl+D (with or without Shift): split pane — block xterm so 'd' isn't sent to PTY.
         // The DOM event bubbles to window where useTerminalKeyboard handles it.
         if (event.key === "d" && (event.metaKey || event.ctrlKey) && !event.altKey && event.type === "keydown") {

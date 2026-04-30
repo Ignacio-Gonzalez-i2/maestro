@@ -103,7 +103,13 @@ export function useTerminalKeyboard({
 
       // Cmd/Ctrl+1: toggle maximize/zoom on the focused terminal.
       // Overrides the legacy "focus terminal 1" mapping at the user's request.
-      if (event.key === "1" && !event.altKey && !event.shiftKey && onToggleZoomFocused) {
+      // Use event.code so this is layout-independent.
+      if (
+        (event.code === "Digit1" || event.code === "Numpad1") &&
+        !event.altKey &&
+        !event.shiftKey &&
+        onToggleZoomFocused
+      ) {
         event.preventDefault();
         event.stopImmediatePropagation();
         onToggleZoomFocused();

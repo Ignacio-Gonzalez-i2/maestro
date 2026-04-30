@@ -36,15 +36,16 @@ export function useAppKeyboard({
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       // Alt-based shortcuts (no Cmd/Ctrl, no Shift)
+      // Use event.code so the bindings are layout-independent (AZERTY etc.).
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-        if (event.key === "1" && onToggleSidebar) {
+        if (event.code === "Digit1" && onToggleSidebar) {
           event.preventDefault();
           event.stopImmediatePropagation();
           onToggleSidebar();
           return;
         }
         // Alt+N to add a new session slot
-        if ((event.key === "n" || event.key === "N") && canAddSession) {
+        if (event.code === "KeyN" && canAddSession) {
           event.preventDefault();
           event.stopImmediatePropagation();
           onAddSession();
@@ -59,15 +60,15 @@ export function useAppKeyboard({
       if (event.altKey || event.shiftKey) return;
 
       // Cmd/Ctrl+2: toggle the git panel.
-      // stopImmediatePropagation prevents useTerminalKeyboard's number-focus from firing.
-      if (event.key === "2" && onToggleGitPanel) {
+      // Use event.code so this still triggers on layouts where Ctrl+2 produces a non-"2" event.key.
+      if ((event.code === "Digit2" || event.code === "Numpad2") && onToggleGitPanel) {
         event.preventDefault();
         event.stopImmediatePropagation();
         onToggleGitPanel();
         return;
       }
 
-      if (event.key === "t") {
+      if (event.code === "KeyT") {
         // Always prevent default to block WebView's new-tab behavior
         event.preventDefault();
         if (canAddSession) {
@@ -76,7 +77,10 @@ export function useAppKeyboard({
       }
     }
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    // Register in the capture phase so the App-level shortcuts (especially Cmd/Ctrl+2
+    // which competes with browser tab-switching defaults) win against any descendant
+    // bubble-phase listener — including xterm's textarea and other modal handlers.
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [onAddSession, canAddSession, onToggleSidebar, onToggleGitPanel]);
 }
