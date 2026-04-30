@@ -22,13 +22,22 @@ fn build_hooks_config(session_id: u32, status_port: u16, instance_id: &str) -> V
         session_id, instance_id
     );
 
+    // Tolerant suffix swallows non-zero curl exit codes so a stale
+    // settings.local.json (e.g. Maestro crashed without cleanup, or Claude
+    // Code is launched outside Maestro) doesn't surface a hook error every
+    // session. `cd .` is cmd.exe's no-op-that-exits-0; `true` is sh's.
+    #[cfg(target_os = "windows")]
+    let tolerant_suffix = " || cd .";
+    #[cfg(not(target_os = "windows"))]
+    let tolerant_suffix = " || true";
+
     let make_hook = |endpoint: &str, is_async: bool| -> Value {
         // `@-` reads POST body from stdin and works on Windows, macOS, and Linux.
         // `@/dev/stdin` is Unix-only and fails on Windows with
         // "curl: option -d: error encountered when reading a file".
         let command = format!(
-            "curl -s -X POST {}/{} {} -d @-",
-            base_url, endpoint, common_headers
+            "curl -s -X POST {}/{} {} -d @-{}",
+            base_url, endpoint, common_headers, tolerant_suffix
         );
 
         let mut hook = json!({
@@ -201,6 +210,18 @@ mod tests {
         assert!(
             command.contains("hook/session-start"),
             "SessionStart command should target /hook/session-start, got: {}",
+            command
+        );
+        // Hook command must tolerate connection failures so a stale
+        // settings.local.json (server down) doesn't error every session.
+        #[cfg(target_os = "windows")]
+        let expected_suffix = "|| cd .";
+        #[cfg(not(target_os = "windows"))]
+        let expected_suffix = "|| true";
+        assert!(
+            command.ends_with(expected_suffix),
+            "SessionStart command should end with tolerant suffix `{}`, got: {}",
+            expected_suffix,
             command
         );
     }
