@@ -290,14 +290,43 @@ function App() {
   const activeTabSlotCount = activeTabCounts?.slotCount ?? 0;
   const activeTabLaunchedCount = activeTabCounts?.launchedCount ?? 0;
 
+  const handleStopAll = useCallback(async () => {
+    if (!activeTab || isStoppingAll) return;
+    setIsStoppingAll(true);
+    try {
+      const sessionStore = useSessionStore.getState();
+      const projectSessions = sessionStore.getSessionsByProject(activeTab.projectPath);
+      const results = await Promise.allSettled(projectSessions.map((s) => killSession(s.id)));
+      for (const result of results) {
+        if (result.status === "rejected") {
+          console.error("Failed to stop session:", result.reason);
+        }
+      }
+      await sessionStore.removeSessionsForProject(activeTab.projectPath);
+      setSessionsLaunched(activeTab.id, false);
+      setSessionCounts((prev) => {
+        const next = new Map(prev);
+        next.set(activeTab.id, { slotCount: 0, launchedCount: 0 });
+        return next;
+      });
+    } finally {
+      setIsStoppingAll(false);
+    }
+  }, [activeTab, isStoppingAll, setSessionsLaunched]);
+
   // Cmd/Ctrl+T: add a new session slot in grid view
   const handleAddSessionShortcut = useCallback(() => {
     multiProjectRef.current?.addSessionToActiveProject();
   }, []);
 
+  const handleToggleSidebar = useCallback(() => setSidebarOpen((prev) => !prev), []);
+  const handleToggleGitPanel = useCallback(() => setGitPanelOpen((prev) => !prev), []);
+
   useAppKeyboard({
     onAddSession: handleAddSessionShortcut,
     canAddSession: activeTabSessionsLaunched,
+    onToggleSidebar: handleToggleSidebar,
+    onToggleGitPanel: handleToggleGitPanel,
   });
 
   // Handler to enter grid view for the active project
@@ -343,6 +372,9 @@ function App() {
           onCollapse={() => setSidebarOpen(false)}
           theme={theme}
           onToggleTheme={toggleTheme}
+          launchedCount={activeTabLaunchedCount}
+          isStoppingAll={isStoppingAll}
+          onStopAll={handleStopAll}
         />
 
         {/* Right column: top bar + content + bottom bar */}
@@ -435,7 +467,6 @@ function App() {
               slotCount={activeTabSlotCount}
               launchedCount={activeTabLaunchedCount}
               maxSessions={DEFAULT_SESSION_COUNT}
-              isStoppingAll={isStoppingAll}
               onSelectDirectory={handleOpenProject}
               onLaunchAll={() => {
                 if (!activeTabSessionsLaunched && activeTab) {
@@ -445,31 +476,6 @@ function App() {
                 multiProjectRef.current?.launchAllInActiveProject();
               }}
               onAddSession={() => multiProjectRef.current?.addSessionToActiveProject()}
-              onStopAll={async () => {
-                if (!activeTab || isStoppingAll) return;
-                setIsStoppingAll(true);
-                try {
-                  // Kill all running PTY sessions for this project
-                  const sessionStore = useSessionStore.getState();
-                  const projectSessions = sessionStore.getSessionsByProject(activeTab.projectPath);
-                  const results = await Promise.allSettled(projectSessions.map((s) => killSession(s.id)));
-                  for (const result of results) {
-                    if (result.status === "rejected") {
-                      console.error("Failed to stop session:", result.reason);
-                    }
-                  }
-                  // Remove sessions from backend and local store
-                  await sessionStore.removeSessionsForProject(activeTab.projectPath);
-                  setSessionsLaunched(activeTab.id, false);
-                  setSessionCounts((prev) => {
-                    const next = new Map(prev);
-                    next.set(activeTab.id, { slotCount: 0, launchedCount: 0 });
-                    return next;
-                  });
-                } finally {
-                  setIsStoppingAll(false);
-                }
-              }}
             />
           </div>
         </div>

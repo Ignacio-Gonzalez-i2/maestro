@@ -13,6 +13,7 @@ import {
   Globe,
   Home,
   Info,
+  Keyboard,
   Loader2,
   Moon,
   Package,
@@ -23,6 +24,7 @@ import {
   Settings,
   Skull,
   Sparkles,
+  Square,
   Store,
   Sun,
   Trash2,
@@ -46,7 +48,7 @@ import { McpServerEditorModal } from "@/components/mcp";
 import { ClaudeMdEditorModal } from "@/components/claudemd";
 import { CliSettingsModal } from "@/components/terminal/CliSettingsModal";
 import { TerminalSettingsModal } from "@/components/terminal/TerminalSettingsModal";
-import { MaestroSettingsModal } from "@/components/settings";
+import { MaestroSettingsModal, ShortcutsModal } from "@/components/settings";
 import type { McpCustomServer, McpServerConfig } from "@/lib/mcp";
 import { checkClaudeMd, type ClaudeMdStatus } from "@/lib/claudemd";
 import { samePath } from "@/lib/path";
@@ -59,6 +61,12 @@ interface SidebarProps {
   onCollapse?: () => void;
   theme?: "dark" | "light";
   onToggleTheme?: () => void;
+  /** Number of running sessions in the active project (drives Stop All visibility). */
+  launchedCount?: number;
+  /** Whether Stop All is currently running. */
+  isStoppingAll?: boolean;
+  /** Stop all running sessions in the active project. */
+  onStopAll?: () => void;
 }
 
 /* ── Shared card class ── */
@@ -96,7 +104,15 @@ const STATUS_LABEL: Record<BackendSessionStatus, string> = {
 /*  SIDEBAR ROOT                                                     */
 /* ================================================================ */
 
-export function Sidebar({ collapsed, onCollapse, theme, onToggleTheme }: SidebarProps) {
+export function Sidebar({
+  collapsed,
+  onCollapse,
+  theme,
+  onToggleTheme,
+  launchedCount = 0,
+  isStoppingAll = false,
+  onStopAll,
+}: SidebarProps) {
   const [activeTab, setActiveTab] = useState<SidebarTab>("config");
   const [width, setWidth] = useState(240);
   const [isDragging, setIsDragging] = useState(false);
@@ -219,7 +235,13 @@ export function Sidebar({ collapsed, onCollapse, theme, onToggleTheme }: Sidebar
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-2.5 py-3">
         {activeTab === "config" ? (
-          <ConfigTab theme={theme} onToggleTheme={onToggleTheme} />
+          <ConfigTab
+            theme={theme}
+            onToggleTheme={onToggleTheme}
+            launchedCount={launchedCount}
+            isStoppingAll={isStoppingAll}
+            onStopAll={onStopAll}
+          />
         ) : (
           <ProcessesTab />
         )}
@@ -285,9 +307,15 @@ function SectionHeader({
 function ConfigTab({
   theme,
   onToggleTheme,
+  launchedCount = 0,
+  isStoppingAll = false,
+  onStopAll,
 }: {
   theme?: "dark" | "light";
   onToggleTheme?: () => void;
+  launchedCount?: number;
+  isStoppingAll?: boolean;
+  onStopAll?: () => void;
 }) {
   return (
     <>
@@ -303,7 +331,13 @@ function ConfigTab({
       {divider}
       <PluginsSection />
       {divider}
-      <AppearanceSection theme={theme} onToggle={onToggleTheme} />
+      <AppearanceSection
+        theme={theme}
+        onToggle={onToggleTheme}
+        launchedCount={launchedCount}
+        isStoppingAll={isStoppingAll}
+        onStopAll={onStopAll}
+      />
     </>
   );
 }
@@ -1423,14 +1457,22 @@ function PluginsSection() {
 function AppearanceSection({
   theme,
   onToggle,
+  launchedCount = 0,
+  isStoppingAll = false,
+  onStopAll,
 }: {
   theme?: "dark" | "light";
   onToggle?: () => void;
+  launchedCount?: number;
+  isStoppingAll?: boolean;
+  onStopAll?: () => void;
 }) {
   const isDark = theme !== "light";
   const [showTerminalSettings, setShowTerminalSettings] = useState(false);
   const [showCliSettings, setShowCliSettings] = useState(false);
   const [showMaestroSettings, setShowMaestroSettings] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const hasRunningSessions = launchedCount > 0;
 
   return (
     <>
@@ -1475,6 +1517,25 @@ function AppearanceSection({
           <Info size={14} className="text-maestro-accent" />
           <span>Maestro Settings</span>
         </button>
+        <button
+          type="button"
+          onClick={() => setShowShortcuts(true)}
+          className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-xs text-maestro-text transition-colors hover:bg-maestro-border/40"
+        >
+          <Keyboard size={14} className="text-maestro-muted" />
+          <span>Keyboard Shortcuts</span>
+        </button>
+        {hasRunningSessions && onStopAll && (
+          <button
+            type="button"
+            onClick={isStoppingAll ? undefined : onStopAll}
+            disabled={isStoppingAll}
+            className="mt-1 flex w-full items-center gap-2.5 rounded-md border border-maestro-red/40 bg-maestro-red/10 px-2 py-1.5 text-xs font-medium text-maestro-red transition-colors hover:bg-maestro-red/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Square size={14} />
+            <span>{isStoppingAll ? "Stopping..." : `Stop All (${launchedCount})`}</span>
+          </button>
+        )}
       </div>
 
       {showTerminalSettings && (
@@ -1485,6 +1546,9 @@ function AppearanceSection({
       )}
       {showMaestroSettings && (
         <MaestroSettingsModal onClose={() => setShowMaestroSettings(false)} />
+      )}
+      {showShortcuts && (
+        <ShortcutsModal onClose={() => setShowShortcuts(false)} />
       )}
     </>
   );

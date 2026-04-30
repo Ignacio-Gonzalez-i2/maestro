@@ -200,6 +200,16 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
   // Track which terminal slot is zoomed (takes full screen)
   const [zoomedSlotId, setZoomedSlotId] = useState<string | null>(null);
 
+  // Session name lookup so the zoomed-tab bar can show real names instead of just indices.
+  const allSessions = useSessionStore((s) => s.sessions);
+  const sessionNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const sess of allSessions) {
+      if (sess.name) map.set(sess.id, sess.name);
+    }
+    return map;
+  }, [allSessions]);
+
   // Binary split tree layout (drives pane arrangement)
   const [layoutTree, setLayoutTree] = useState<TreeNode>(() => createLeaf(slots[0].id));
 
@@ -300,6 +310,27 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
     onSplitVertical: useCallback(() => handleSplit("vertical"), [handleSplit]),
     onSplitHorizontal: useCallback(() => handleSplit("horizontal"), [handleSplit]),
     onClosePane: closePaneRef.current,
+    onToggleZoomFocused: useCallback(() => {
+      const targetId = focusedSlotId ?? slotsRef.current[0]?.id;
+      if (!targetId) return;
+      setZoomedSlotId((prev) => (prev === targetId ? null : targetId));
+    }, [focusedSlotId]),
+    onZoomedNext: useCallback(() => {
+      setZoomedSlotId((prev) => {
+        if (!prev) return prev;
+        const idx = orderedSlotIds.indexOf(prev);
+        if (idx < 0) return prev;
+        return orderedSlotIds[(idx + 1) % orderedSlotIds.length];
+      });
+    }, [orderedSlotIds]),
+    onZoomedPrev: useCallback(() => {
+      setZoomedSlotId((prev) => {
+        if (!prev) return prev;
+        const idx = orderedSlotIds.indexOf(prev);
+        if (idx < 0) return prev;
+        return orderedSlotIds[(idx - 1 + orderedSlotIds.length) % orderedSlotIds.length];
+      });
+    }, [orderedSlotIds]),
     enabled: isActive,
   });
 
@@ -1337,25 +1368,28 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
               Terminal {zoomedIndex + 1}/{orderedSlots.length}
             </span>
             <div className="h-3.5 w-px bg-maestro-border" />
-            <div className="flex gap-0.5">
+            <div className="flex flex-1 gap-0.5 overflow-x-auto">
               {orderedSlots.map((slot, index) => {
                 const isActive = slot.id === zoomedSlotId;
                 const hasSession = slot.sessionId !== null;
+                const liveName = slot.sessionId !== null ? sessionNameById.get(slot.sessionId) : undefined;
+                const label = liveName?.trim() || slot.customName.trim() || `Terminal ${index + 1}`;
 
                 return (
                   <button
                     key={slot.id}
                     onClick={() => handleToggleZoom(slot.id)}
                     className={`
-                      flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors
+                      flex shrink-0 items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors
                       ${isActive
                         ? 'bg-maestro-accent/15 text-maestro-accent'
                         : 'text-maestro-muted hover:bg-maestro-card hover:text-maestro-text'
                       }
                     `}
-                    title={isActive ? 'Current terminal (click to exit zoom)' : `Switch to terminal ${index + 1}`}
+                    title={isActive ? `${label} (click to exit zoom)` : `Switch to ${label}`}
                   >
-                    <span className="font-mono text-xs">{index + 1}</span>
+                    <span className="font-mono text-[10px] opacity-60">{index + 1}</span>
+                    <span className="max-w-[180px] truncate">{label}</span>
                     {hasSession && (
                       <span className="h-1.5 w-1.5 rounded-full bg-maestro-green" />
                     )}
@@ -1363,7 +1397,6 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
                 );
               })}
             </div>
-            <div className="flex-1" />
             <button
               onClick={() => handleToggleZoom(zoomedSlotId)}
               className="rounded p-0.5 text-maestro-muted transition-colors hover:bg-maestro-card hover:text-maestro-text"

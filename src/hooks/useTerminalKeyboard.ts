@@ -17,6 +17,12 @@ interface UseTerminalKeyboardOptions {
   onSplitHorizontal?: () => void;
   /** Callback to close the focused pane (Cmd+W) */
   onClosePane?: () => void;
+  /** Callback to toggle maximize on the focused terminal (Cmd/Ctrl+1) */
+  onToggleZoomFocused?: () => void;
+  /** Callback when Alt+ArrowRight is pressed (used to cycle zoomed terminal forward) */
+  onZoomedNext?: () => void;
+  /** Callback when Alt+ArrowLeft is pressed (used to cycle zoomed terminal backward) */
+  onZoomedPrev?: () => void;
   /** Whether this keyboard handler is active (e.g. only for the active project tab) */
   enabled?: boolean;
 }
@@ -45,12 +51,32 @@ export function useTerminalKeyboard({
   onSplitVertical,
   onSplitHorizontal,
   onClosePane,
+  onToggleZoomFocused,
+  onZoomedNext,
+  onZoomedPrev,
   enabled = true,
 }: UseTerminalKeyboardOptions): void {
   useEffect(() => {
     if (!enabled) return;
 
     function handleKeyDown(event: KeyboardEvent) {
+      // Alt+ArrowLeft / Alt+ArrowRight: cycle zoomed terminal.
+      // Handled before the modifierKey gate so it works without Cmd/Ctrl.
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        if (event.key === "ArrowRight" && onZoomedNext) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          onZoomedNext();
+          return;
+        }
+        if (event.key === "ArrowLeft" && onZoomedPrev) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          onZoomedPrev();
+          return;
+        }
+      }
+
       const modifierKey = isMac() ? event.metaKey : event.ctrlKey;
       if (!modifierKey) return;
 
@@ -75,14 +101,25 @@ export function useTerminalKeyboard({
         return;
       }
 
+      // Cmd/Ctrl+1: toggle maximize/zoom on the focused terminal.
+      // Overrides the legacy "focus terminal 1" mapping at the user's request.
+      if (event.key === "1" && !event.altKey && !event.shiftKey && onToggleZoomFocused) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        onToggleZoomFocused();
+        return;
+      }
+
       // Navigation shortcuts only apply when terminals exist
       if (terminalCount === 0) return;
 
       // Don't interfere with other modifier combinations
       if (event.altKey || event.shiftKey) return;
 
-      // Handle number keys 1-9 and 0 for terminal jumping
-      if (event.key >= "1" && event.key <= "9") {
+      // Handle number keys 2-9 and 0 for terminal jumping.
+      // "1" is reserved for toggle-zoom (handled above);
+      // "2" is reserved for the git panel (handled at the App level).
+      if (event.key >= "3" && event.key <= "9") {
         const targetIndex = parseInt(event.key, 10) - 1;
         if (targetIndex < terminalCount) {
           event.preventDefault();
@@ -117,5 +154,5 @@ export function useTerminalKeyboard({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [enabled, terminalCount, focusedIndex, onFocusTerminal, onCycleNext, onCyclePrevious, onSplitVertical, onSplitHorizontal, onClosePane]);
+  }, [enabled, terminalCount, focusedIndex, onFocusTerminal, onCycleNext, onCyclePrevious, onSplitVertical, onSplitHorizontal, onClosePane, onToggleZoomFocused, onZoomedNext, onZoomedPrev]);
 }
