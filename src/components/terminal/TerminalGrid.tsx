@@ -101,6 +101,7 @@ function createEmptySlot(
     id: generateSlotId(),
     mode: "Claude",
     branch: null,
+    customName: "",
     worktreeMode: "project",
     sessionId: null,
     worktreePath: null,
@@ -570,11 +571,29 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
           projectPath,
           workingDirectory,
         );
+
+        // Apply optional custom window name. Empty/whitespace is treated as "no
+        // custom name" — the backend normalizes it back to None.
+        const trimmedName = slot.customName.trim();
+        let finalName: string | null | undefined = sessionConfig.name;
+        if (trimmedName) {
+          try {
+            const renamed = await invoke<{ name?: string | null }>("rename_session", {
+              sessionId,
+              name: trimmedName,
+            });
+            finalName = renamed.name;
+          } catch (err) {
+            console.warn(`[Session] Failed to set custom name for session ${sessionId}:`, err);
+          }
+        }
+
         // Add project to MCP status monitor for polling status updates
         await invoke("add_mcp_project", { projectPath });
         // Add session to store directly (don't refetch all sessions to avoid status reset)
         useSessionStore.getState().addSession({
           ...sessionConfig,
+          name: finalName,
           status: sessionConfig.status as import("@/stores/useSessionStore").BackendSessionStatus,
         });
       }
@@ -921,6 +940,12 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
     );
   }, []);
 
+  const updateSlotCustomName = useCallback((slotId: string, name: string) => {
+    setSlots((prev) =>
+      prev.map((s) => (s.id === slotId ? { ...s, customName: name } : s))
+    );
+  }, []);
+
   const updateSlotResumeSession = useCallback((slotId: string, sessionId: string | null) => {
     setSlots((prev) =>
       prev.map((s) =>
@@ -1222,6 +1247,7 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
         plugins={plugins}
         hasManagedWorktree={hasManagedWorktree}
         onCreateBranch={handleCreateBranch}
+        onCustomNameChange={(name) => updateSlotCustomName(slot.id, name)}
         onModeChange={(mode) => updateSlotMode(slot.id, mode)}
         onBranchChange={(branch) => updateSlotBranch(slot.id, branch)}
         onWorktreeModeChange={(mode) => updateSlotWorktreeMode(slot.id, mode)}
@@ -1241,7 +1267,7 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
       />
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps -- Deps cover all render-affecting state
-  }, [slots, focusedSlotId, isActive, isDraggingFiles, dropTargetSlotId, getFocusCallback, handleKill, handleToggleZoom, projectPath, branches, isLoadingBranches, isGitRepo, hasManagedWorktree, repositories, workspaceType, effectiveRepoPath, onRepoChange, mcpServers, skills, plugins, handleCreateBranch, updateSlotMode, updateSlotBranch, updateSlotWorktreeMode, refreshBranches, toggleSlotMcp, toggleSlotSkill, toggleSlotPlugin, selectAllMcp, unselectAllMcp, selectAllPlugins, unselectAllPlugins, launchSlot, removeSlot, updateSlotResumeSession]);
+  }, [slots, focusedSlotId, isActive, isDraggingFiles, dropTargetSlotId, getFocusCallback, handleKill, handleToggleZoom, projectPath, branches, isLoadingBranches, isGitRepo, hasManagedWorktree, repositories, workspaceType, effectiveRepoPath, onRepoChange, mcpServers, skills, plugins, handleCreateBranch, updateSlotCustomName, updateSlotMode, updateSlotBranch, updateSlotWorktreeMode, refreshBranches, toggleSlotMcp, toggleSlotSkill, toggleSlotPlugin, selectAllMcp, unselectAllMcp, selectAllPlugins, unselectAllPlugins, launchSlot, removeSlot, updateSlotResumeSession]);
 
   const handleRatioChange = useCallback((nodeId: string, ratio: number) => {
     setLayoutTree((prev) => updateRatio(prev, nodeId, ratio));
@@ -1356,6 +1382,7 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
                 plugins={plugins}
                 hasManagedWorktree={hasManagedWorktree}
                 onCreateBranch={handleCreateBranch}
+                onCustomNameChange={(name) => updateSlotCustomName(zoomedSlot.id, name)}
                 onModeChange={(mode) => updateSlotMode(zoomedSlot.id, mode)}
                 onBranchChange={(branch) => updateSlotBranch(zoomedSlot.id, branch)}
                 onWorktreeModeChange={(mode) => updateSlotWorktreeMode(zoomedSlot.id, mode)}

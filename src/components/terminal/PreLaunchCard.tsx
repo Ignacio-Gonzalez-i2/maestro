@@ -41,6 +41,8 @@ export interface SessionSlot {
   id: string;
   mode: AiMode;
   branch: string | null;
+  /** Custom display name shown in the terminal header instead of the default `{provider} #{id}`. */
+  customName: string;
   /** How the working directory is resolved: auto-detect/reuse, project path, or new worktree. */
   worktreeMode: WorktreeMode;
   sessionId: number | null;
@@ -78,6 +80,7 @@ interface PreLaunchCardProps {
   skills: SkillConfig[];
   plugins: PluginConfig[];
   onCreateBranch?: (name: string, andCheckout: boolean, repoPath?: string) => Promise<void>;
+  onCustomNameChange: (name: string) => void;
   onModeChange: (mode: AiMode) => void;
   onBranchChange: (branch: string | null) => void;
   onWorktreeModeChange: (mode: WorktreeMode) => void;
@@ -143,6 +146,7 @@ export function PreLaunchCard({
   skills,
   plugins,
   onCreateBranch,
+  onCustomNameChange,
   onModeChange,
   onBranchChange,
   onWorktreeModeChange,
@@ -442,6 +446,25 @@ export function PreLaunchCard({
               <X size={14} />
             </button>
           </div>
+        </div>
+
+        {/* Window Name (optional) */}
+        <div>
+          <label
+            htmlFor={`session-name-${slot.id}`}
+            className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-maestro-muted"
+          >
+            Window Name <span className="text-maestro-muted/60">(optional)</span>
+          </label>
+          <input
+            id={`session-name-${slot.id}`}
+            type="text"
+            value={slot.customName}
+            onChange={(e) => onCustomNameChange(e.target.value)}
+            placeholder="e.g. backend bugfix"
+            maxLength={60}
+            className="w-full rounded border border-maestro-border bg-maestro-card px-3 py-2 text-sm text-maestro-text outline-none transition-colors placeholder:text-maestro-muted/50 hover:border-maestro-accent/50 focus:border-maestro-accent"
+          />
         </div>
 
         {/* AI Mode Selector */}
