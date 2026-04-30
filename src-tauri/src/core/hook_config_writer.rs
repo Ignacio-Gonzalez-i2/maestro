@@ -23,8 +23,11 @@ fn build_hooks_config(session_id: u32, status_port: u16, instance_id: &str) -> V
     );
 
     let make_hook = |endpoint: &str, is_async: bool| -> Value {
+        // `@-` reads POST body from stdin and works on Windows, macOS, and Linux.
+        // `@/dev/stdin` is Unix-only and fails on Windows with
+        // "curl: option -d: error encountered when reading a file".
         let command = format!(
-            "curl -s -X POST {}/{} {} -d @/dev/stdin",
+            "curl -s -X POST {}/{} {} -d @-",
             base_url, endpoint, common_headers
         );
 
