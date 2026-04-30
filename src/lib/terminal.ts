@@ -126,6 +126,7 @@ export async function deleteClaudeSession(projectPath: string, sessionId: string
 export interface SessionConfig {
   id: number;
   mode: AiMode;
+  name?: string | null;
   branch: string | null;
   status: string;
   worktree_path: string | null;
