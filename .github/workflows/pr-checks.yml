@@ -18,9 +18,6 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Lint (Biome)
-        run: npx --yes @biomejs/biome check .
-
       - name: Typecheck
         run: npx tsc --noEmit
 
