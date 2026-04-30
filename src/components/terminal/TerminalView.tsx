@@ -268,11 +268,20 @@ export const TerminalView = memo(function TerminalView({
   );
 
   /**
-   * Handles quick action button clicks by writing the prompt to the terminal.
+   * Handles quick action button clicks: pastes the prompt into the agent's
+   * input (without auto-submitting) and refocuses the xterm so the next
+   * Enter the user types runs the command. Without the refocus, the
+   * pill button keeps focus and Enter triggers it again, duplicating
+   * the prompt instead of submitting it.
    */
   const handleQuickAction = useCallback(
     (prompt: string) => {
-      writeStdin(sessionId, prompt + "\n").catch(console.error);
+      writeStdin(sessionId, prompt).catch(console.error);
+      // Refocus the terminal on the next tick — after the click handler
+      // releases focus from the pill button.
+      requestAnimationFrame(() => {
+        termRef.current?.focus();
+      });
     },
     [sessionId],
   );
@@ -530,6 +539,20 @@ export const TerminalView = memo(function TerminalView({
         // Cmd/Ctrl+T: add new session — block xterm so 't' isn't sent to PTY.
         // The DOM event still bubbles to window where useAppKeyboard handles it.
         if (event.key === "t" && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.type === "keydown") {
+          return false;
+        }
+
+        // Cmd/Ctrl+1 (toggle maximize) and Cmd/Ctrl+2 (toggle git panel):
+        // block xterm so it doesn't send the corresponding control byte (NUL/SOH) to PTY.
+        // Use event.code for layout independence; event.key may differ on AZERTY etc.
+        if (
+          (event.code === "Digit1" || event.code === "Digit2" ||
+           event.code === "Numpad1" || event.code === "Numpad2") &&
+          (event.metaKey || event.ctrlKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.type === "keydown"
+        ) {
           return false;
         }
 

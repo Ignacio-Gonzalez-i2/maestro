@@ -1,7 +1,8 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { invoke } from "@tauri-apps/api/core";
 import { ask } from "@tauri-apps/plugin-dialog";
+import { GripVertical } from "lucide-react";
 
 import { getBranchesWithWorktreeStatus, type BranchWithWorktreeStatus } from "@/lib/git";
 import { removeSessionMcpConfig, removeOpenCodeMcpConfig, setSessionMcpServers, writeSessionMcpConfig, writeOpenCodeMcpConfig, type McpServerConfig } from "@/lib/mcp";
@@ -43,7 +44,7 @@ import { useWorkspaceStore, type RepositoryInfo, type WorkspaceType } from "@/st
 import { shellEscapePaths } from "@/lib/shellEscape";
 import { PreLaunchCard, type SessionSlot } from "./PreLaunchCard";
 import { SplitPaneView } from "./SplitPaneView";
-import { createLeaf, splitLeaf, removeLeaf, updateRatio, collectSlotIds, findSiblingSlotId, buildGridTree, type TreeNode, type SplitDirection } from "./splitTree";
+import { createLeaf, splitLeaf, removeLeaf, updateRatio, collectSlotIds, findSiblingSlotId, buildGridTree, swapSlots, type TreeNode, type SplitDirection } from "./splitTree";
 import { TerminalView } from "./TerminalView";
 
 /** Stable empty arrays to avoid infinite re-render loops in Zustand selectors. */
@@ -199,6 +200,16 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
   // Track which terminal slot is zoomed (takes full screen)
   const [zoomedSlotId, setZoomedSlotId] = useState<string | null>(null);
 
+  // Session name lookup so the zoomed-tab bar can show real names instead of just indices.
+  const allSessions = useSessionStore((s) => s.sessions);
+  const sessionNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const sess of allSessions) {
+      if (sess.name) map.set(sess.id, sess.name);
+    }
+    return map;
+  }, [allSessions]);
+
   // Binary split tree layout (drives pane arrangement)
   const [layoutTree, setLayoutTree] = useState<TreeNode>(() => createLeaf(slots[0].id));
 
@@ -299,6 +310,27 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
     onSplitVertical: useCallback(() => handleSplit("vertical"), [handleSplit]),
     onSplitHorizontal: useCallback(() => handleSplit("horizontal"), [handleSplit]),
     onClosePane: closePaneRef.current,
+    onToggleZoomFocused: useCallback(() => {
+      const targetId = focusedSlotId ?? slotsRef.current[0]?.id;
+      if (!targetId) return;
+      setZoomedSlotId((prev) => (prev === targetId ? null : targetId));
+    }, [focusedSlotId]),
+    onZoomedNext: useCallback(() => {
+      setZoomedSlotId((prev) => {
+        if (!prev) return prev;
+        const idx = orderedSlotIds.indexOf(prev);
+        if (idx < 0) return prev;
+        return orderedSlotIds[(idx + 1) % orderedSlotIds.length];
+      });
+    }, [orderedSlotIds]),
+    onZoomedPrev: useCallback(() => {
+      setZoomedSlotId((prev) => {
+        if (!prev) return prev;
+        const idx = orderedSlotIds.indexOf(prev);
+        if (idx < 0) return prev;
+        return orderedSlotIds[(idx - 1 + orderedSlotIds.length) % orderedSlotIds.length];
+      });
+    }, [orderedSlotIds]),
     enabled: isActive,
   });
 
@@ -1200,6 +1232,12 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [zoomedSlotId, handleToggleZoom]);
 
+  /** Swap the contents of two leaves so the user can rearrange panes. */
+  const handleSwapSlots = useCallback((srcSlotId: string, destSlotId: string) => {
+    if (!srcSlotId || !destSlotId || srcSlotId === destSlotId) return;
+    setLayoutTree((prev) => swapSlots(prev, srcSlotId, destSlotId));
+  }, []);
+
   const renderLeaf = useCallback((slotId: string) => {
     const slot = slots.find((s) => s.id === slotId);
     if (!slot) return null;
@@ -1210,9 +1248,15 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
       </div>
     );
 
+    const showReorderHandle = slots.length > 1;
+
     if (slot.sessionId !== null) {
       return (
-        <>
+        <DraggablePane
+          slotId={slot.id}
+          showHandle={showReorderHandle}
+          onSwap={handleSwapSlots}
+        >
           <TerminalView
             key={slot.id}
             sessionId={slot.sessionId}
@@ -1225,11 +1269,16 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
             onToggleZoom={() => handleToggleZoom(slot.id)}
           />
           {dropOverlay}
-        </>
+        </DraggablePane>
       );
     }
 
     return (
+      <DraggablePane
+        slotId={slot.id}
+        showHandle={showReorderHandle}
+        onSwap={handleSwapSlots}
+      >
       <PreLaunchCard
         key={slot.id}
         slot={slot}
@@ -1265,9 +1314,10 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
         isZoomed={false}
         onToggleZoom={() => handleToggleZoom(slot.id)}
       />
+      </DraggablePane>
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps -- Deps cover all render-affecting state
-  }, [slots, focusedSlotId, isActive, isDraggingFiles, dropTargetSlotId, getFocusCallback, handleKill, handleToggleZoom, projectPath, branches, isLoadingBranches, isGitRepo, hasManagedWorktree, repositories, workspaceType, effectiveRepoPath, onRepoChange, mcpServers, skills, plugins, handleCreateBranch, updateSlotCustomName, updateSlotMode, updateSlotBranch, updateSlotWorktreeMode, refreshBranches, toggleSlotMcp, toggleSlotSkill, toggleSlotPlugin, selectAllMcp, unselectAllMcp, selectAllPlugins, unselectAllPlugins, launchSlot, removeSlot, updateSlotResumeSession]);
+  }, [slots, focusedSlotId, isActive, isDraggingFiles, dropTargetSlotId, getFocusCallback, handleKill, handleToggleZoom, handleSwapSlots, projectPath, branches, isLoadingBranches, isGitRepo, hasManagedWorktree, repositories, workspaceType, effectiveRepoPath, onRepoChange, mcpServers, skills, plugins, handleCreateBranch, updateSlotCustomName, updateSlotMode, updateSlotBranch, updateSlotWorktreeMode, refreshBranches, toggleSlotMcp, toggleSlotSkill, toggleSlotPlugin, selectAllMcp, unselectAllMcp, selectAllPlugins, unselectAllPlugins, launchSlot, removeSlot, updateSlotResumeSession]);
 
   const handleRatioChange = useCallback((nodeId: string, ratio: number) => {
     setLayoutTree((prev) => updateRatio(prev, nodeId, ratio));
@@ -1318,25 +1368,28 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
               Terminal {zoomedIndex + 1}/{orderedSlots.length}
             </span>
             <div className="h-3.5 w-px bg-maestro-border" />
-            <div className="flex gap-0.5">
+            <div className="flex flex-1 gap-0.5 overflow-x-auto">
               {orderedSlots.map((slot, index) => {
                 const isActive = slot.id === zoomedSlotId;
                 const hasSession = slot.sessionId !== null;
+                const liveName = slot.sessionId !== null ? sessionNameById.get(slot.sessionId) : undefined;
+                const label = liveName?.trim() || slot.customName.trim() || `Terminal ${index + 1}`;
 
                 return (
                   <button
                     key={slot.id}
                     onClick={() => handleToggleZoom(slot.id)}
                     className={`
-                      flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors
+                      flex shrink-0 items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors
                       ${isActive
                         ? 'bg-maestro-accent/15 text-maestro-accent'
                         : 'text-maestro-muted hover:bg-maestro-card hover:text-maestro-text'
                       }
                     `}
-                    title={isActive ? 'Current terminal (click to exit zoom)' : `Switch to terminal ${index + 1}`}
+                    title={isActive ? `${label} (click to exit zoom)` : `Switch to ${label}`}
                   >
-                    <span className="font-mono text-xs">{index + 1}</span>
+                    <span className="font-mono text-[10px] opacity-60">{index + 1}</span>
+                    <span className="max-w-[180px] truncate">{label}</span>
                     {hasSession && (
                       <span className="h-1.5 w-1.5 rounded-full bg-maestro-green" />
                     )}
@@ -1344,7 +1397,6 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
                 );
               })}
             </div>
-            <div className="flex-1" />
             <button
               onClick={() => handleToggleZoom(zoomedSlotId)}
               className="rounded p-0.5 text-maestro-muted transition-colors hover:bg-maestro-card hover:text-maestro-text"
@@ -1423,3 +1475,109 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
     </div>
   );
 });
+
+/**
+ * Wraps a terminal pane in a relative container that supports drag-to-reorder.
+ *
+ * Uses pointer events (mousedown/move/up) instead of HTML5 DnD because
+ * Tauri's WebView2 keeps showing the "no drop" cursor when custom MIME
+ * types aren't surfaced in `dataTransfer.types` during dragover. Pointer
+ * events are also lighter — no drag image, no system cursor switching —
+ * and let us use `document.elementFromPoint` to find the destination pane.
+ *
+ * `min-h-0 min-w-0` keep the flex/overflow chain working so children with
+ * `overflow-y-auto` (e.g. PreLaunchCard) can shrink past their intrinsic
+ * content size and become scrollable.
+ */
+function DraggablePane({
+  slotId,
+  showHandle,
+  onSwap,
+  children,
+}: {
+  slotId: string;
+  showHandle: boolean;
+  onSwap: (srcSlotId: string, destSlotId: string) => void;
+  children: ReactNode;
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+
+  const startDrag = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0 && e.pointerType !== "touch") return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      setIsDragging(true);
+
+      // Outline every other pane so the user can see they're valid drop targets.
+      const allWrappers = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-slot-id]"),
+      );
+      const decorate = (el: HTMLElement, hovered: boolean) => {
+        el.style.outline = hovered
+          ? "2px solid rgb(var(--maestro-accent))"
+          : "1px dashed rgb(var(--maestro-border))";
+        el.style.outlineOffset = "-2px";
+      };
+      const cleanup = () => {
+        for (const el of allWrappers) {
+          el.style.outline = "";
+          el.style.outlineOffset = "";
+        }
+      };
+      for (const el of allWrappers) {
+        if (el.getAttribute("data-slot-id") !== slotId) decorate(el, false);
+      }
+
+      const findTarget = (clientX: number, clientY: number): HTMLElement | null => {
+        const elem = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+        return elem?.closest("[data-slot-id]") as HTMLElement | null;
+      };
+
+      const onMove = (ev: PointerEvent) => {
+        const target = findTarget(ev.clientX, ev.clientY);
+        const targetId = target?.getAttribute("data-slot-id");
+        for (const el of allWrappers) {
+          const id = el.getAttribute("data-slot-id");
+          if (id === slotId) continue;
+          decorate(el, id === targetId && id !== slotId);
+        }
+      };
+      const onUp = (ev: PointerEvent) => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        cleanup();
+        setIsDragging(false);
+        const target = findTarget(ev.clientX, ev.clientY);
+        const dest = target?.getAttribute("data-slot-id");
+        if (dest && dest !== slotId) onSwap(slotId, dest);
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [slotId, onSwap],
+  );
+
+  return (
+    <div className="relative h-full w-full min-h-0 min-w-0">
+      {children}
+      {showHandle && (
+        <div
+          onPointerDown={startDrag}
+          title="Drag to swap with another pane"
+          className={`absolute left-1 top-1 z-20 flex h-5 w-4 items-center justify-center rounded transition-colors hover:bg-maestro-card/80 hover:text-maestro-text ${
+            isDragging
+              ? "cursor-grabbing text-maestro-accent"
+              : "cursor-grab text-maestro-muted/40"
+          }`}
+        >
+          <GripVertical size={12} />
+        </div>
+      )}
+    </div>
+  );
+}

@@ -17,6 +17,7 @@ import { useUpdateStore } from "./stores/useUpdateStore";
 import { initActivityListener, stopActivityListener } from "./stores/useActivityStore";
 import { UpdateNotification } from "./components/update/UpdateNotification";
 import { GitGraphPanel } from "./components/git/GitGraphPanel";
+import type { GitPanelTab } from "./components/git/GitPanelTabs";
 import { BottomBar } from "./components/shared/BottomBar";
 import { FDADialog } from "./components/shared/FDADialog";
 import { MultiProjectView, type MultiProjectViewHandle } from "./components/shared/MultiProjectView";
@@ -54,6 +55,7 @@ function App() {
   const multiProjectRef = useRef<MultiProjectViewHandle>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
+  const [gitPanelTab, setGitPanelTab] = useState<GitPanelTab>("status");
   const [sessionCounts, setSessionCounts] = useState<Map<string, { slotCount: number; launchedCount: number }>>(new Map());
   const [isStoppingAll, setIsStoppingAll] = useState(false);
   const [currentBranch, setCurrentBranch] = useState<string | undefined>(undefined);
@@ -290,14 +292,50 @@ function App() {
   const activeTabSlotCount = activeTabCounts?.slotCount ?? 0;
   const activeTabLaunchedCount = activeTabCounts?.launchedCount ?? 0;
 
+  const handleStopAll = useCallback(async () => {
+    if (!activeTab || isStoppingAll) return;
+    setIsStoppingAll(true);
+    try {
+      const sessionStore = useSessionStore.getState();
+      const projectSessions = sessionStore.getSessionsByProject(activeTab.projectPath);
+      const results = await Promise.allSettled(projectSessions.map((s) => killSession(s.id)));
+      for (const result of results) {
+        if (result.status === "rejected") {
+          console.error("Failed to stop session:", result.reason);
+        }
+      }
+      await sessionStore.removeSessionsForProject(activeTab.projectPath);
+      setSessionsLaunched(activeTab.id, false);
+      setSessionCounts((prev) => {
+        const next = new Map(prev);
+        next.set(activeTab.id, { slotCount: 0, launchedCount: 0 });
+        return next;
+      });
+    } finally {
+      setIsStoppingAll(false);
+    }
+  }, [activeTab, isStoppingAll, setSessionsLaunched]);
+
   // Cmd/Ctrl+T: add a new session slot in grid view
   const handleAddSessionShortcut = useCallback(() => {
     multiProjectRef.current?.addSessionToActiveProject();
   }, []);
 
+  const handleToggleSidebar = useCallback(() => setSidebarOpen((prev) => !prev), []);
+  // Ctrl/Cmd+2 always lands the panel on the Status tab when toggling open.
+  // Manual tab switches while the panel is open are preserved until the next open.
+  const handleToggleGitPanel = useCallback(() => {
+    setGitPanelOpen((prev) => {
+      if (!prev) setGitPanelTab("status");
+      return !prev;
+    });
+  }, []);
+
   useAppKeyboard({
     onAddSession: handleAddSessionShortcut,
     canAddSession: activeTabSessionsLaunched,
+    onToggleSidebar: handleToggleSidebar,
+    onToggleGitPanel: handleToggleGitPanel,
   });
 
   // Handler to enter grid view for the active project
@@ -343,6 +381,9 @@ function App() {
           onCollapse={() => setSidebarOpen(false)}
           theme={theme}
           onToggleTheme={toggleTheme}
+          launchedCount={activeTabLaunchedCount}
+          isStoppingAll={isStoppingAll}
+          onStopAll={handleStopAll}
         />
 
         {/* Right column: top bar + content + bottom bar */}
@@ -425,6 +466,8 @@ function App() {
               repositories={activeTab?.repositories ?? []}
               workspaceType={activeTab?.workspaceType ?? "single-repo"}
               onRepoChange={(path) => activeTab && setSelectedRepo(activeTab.id, path)}
+              activeTab={gitPanelTab}
+              onActiveTabChange={setGitPanelTab}
             />
           </div>
 
@@ -435,7 +478,6 @@ function App() {
               slotCount={activeTabSlotCount}
               launchedCount={activeTabLaunchedCount}
               maxSessions={DEFAULT_SESSION_COUNT}
-              isStoppingAll={isStoppingAll}
               onSelectDirectory={handleOpenProject}
               onLaunchAll={() => {
                 if (!activeTabSessionsLaunched && activeTab) {
@@ -445,31 +487,6 @@ function App() {
                 multiProjectRef.current?.launchAllInActiveProject();
               }}
               onAddSession={() => multiProjectRef.current?.addSessionToActiveProject()}
-              onStopAll={async () => {
-                if (!activeTab || isStoppingAll) return;
-                setIsStoppingAll(true);
-                try {
-                  // Kill all running PTY sessions for this project
-                  const sessionStore = useSessionStore.getState();
-                  const projectSessions = sessionStore.getSessionsByProject(activeTab.projectPath);
-                  const results = await Promise.allSettled(projectSessions.map((s) => killSession(s.id)));
-                  for (const result of results) {
-                    if (result.status === "rejected") {
-                      console.error("Failed to stop session:", result.reason);
-                    }
-                  }
-                  // Remove sessions from backend and local store
-                  await sessionStore.removeSessionsForProject(activeTab.projectPath);
-                  setSessionsLaunched(activeTab.id, false);
-                  setSessionCounts((prev) => {
-                    const next = new Map(prev);
-                    next.set(activeTab.id, { slotCount: 0, launchedCount: 0 });
-                    return next;
-                  });
-                } finally {
-                  setIsStoppingAll(false);
-                }
-              }}
             />
           </div>
         </div>

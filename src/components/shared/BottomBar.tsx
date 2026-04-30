@@ -1,4 +1,4 @@
-import { FolderOpen, Play, Plus, Square } from "lucide-react";
+import { FolderOpen, Play, Plus } from "lucide-react";
 
 interface BottomBarProps {
   /** Whether in the grid view (project selected and launched) */
@@ -8,11 +8,8 @@ interface BottomBarProps {
   /** Number of actually running sessions */
   launchedCount: number;
   maxSessions?: number;
-  /** Whether Stop All is currently in progress */
-  isStoppingAll?: boolean;
   onSelectDirectory: () => void;
   onLaunchAll: () => void;
-  onStopAll: () => void;
   onAddSession?: () => void;
 }
 
@@ -21,13 +18,10 @@ export function BottomBar({
   slotCount,
   launchedCount,
   maxSessions = 6,
-  isStoppingAll = false,
   onSelectDirectory,
   onLaunchAll,
-  onStopAll,
   onAddSession,
 }: BottomBarProps) {
-  const hasRunningSessions = launchedCount > 0;
   const hasUnlaunchedSlots = slotCount > launchedCount;
   const unlaunchedCount = slotCount - launchedCount;
 
@@ -56,18 +50,6 @@ export function BottomBar({
         >
           <Plus size={13} />
           Add Session
-        </button>
-      )}
-
-      {hasRunningSessions && (
-        <button
-          type="button"
-          onClick={isStoppingAll ? undefined : onStopAll}
-          disabled={isStoppingAll}
-          className="flex items-center gap-2 rounded-lg bg-maestro-red/90 px-4 py-1.5 text-xs font-medium text-white shadow-md shadow-black/20 transition-colors hover:bg-maestro-red disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Square size={11} />
-          {isStoppingAll ? "Stopping..." : "Stop All"}
         </button>
       )}
 
