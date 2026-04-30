@@ -7,6 +7,19 @@ export interface ClaudeMdStatus {
   content: string | null;
 }
 
+/** A context doc surfaced in the sidebar (CLAUDE.md / AGENTS.md / README.md). */
+export type ContextDocTier = "user" | "project" | "local";
+export type ContextDocKind = "claude" | "agents" | "readme";
+
+export interface ContextDoc {
+  tier: ContextDocTier;
+  kind: ContextDocKind;
+  /** Display label (the filename, e.g. "CLAUDE.md"). */
+  label: string;
+  path: string;
+  exists: boolean;
+}
+
 /** Check if CLAUDE.md exists at project root */
 export async function checkClaudeMd(projectPath: string): Promise<ClaudeMdStatus> {
   return invoke<ClaudeMdStatus>("check_claude_md", { projectPath });
@@ -20,4 +33,19 @@ export async function readClaudeMd(projectPath: string): Promise<string> {
 /** Write CLAUDE.md content (creates or updates) */
 export async function writeClaudeMd(projectPath: string, content: string): Promise<void> {
   return invoke<void>("write_claude_md", { projectPath, content });
+}
+
+/** List all context docs (user + project + local) for the active project. */
+export async function listContextDocs(projectPath: string): Promise<ContextDoc[]> {
+  return invoke<ContextDoc[]>("list_context_docs", { projectPath });
+}
+
+/** Read a context doc by absolute path. Returns "" if the file doesn't exist. */
+export async function readContextDoc(path: string): Promise<string> {
+  return invoke<string>("read_context_doc", { path });
+}
+
+/** Write a context doc by absolute path (creates parent dirs as needed). */
+export async function writeContextDoc(path: string, content: string): Promise<void> {
+  return invoke<void>("write_context_doc", { path, content });
 }

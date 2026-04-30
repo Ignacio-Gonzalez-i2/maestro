@@ -343,6 +343,9 @@ pub fn run() {
             commands::claudemd::check_claude_md,
             commands::claudemd::read_claude_md,
             commands::claudemd::write_claude_md,
+            commands::claudemd::list_context_docs,
+            commands::claudemd::read_context_doc,
+            commands::claudemd::write_context_doc,
             // Font detection commands
             commands::fonts::get_available_fonts,
             commands::fonts::check_font_available,

@@ -45,12 +45,12 @@ import { useProcessTreeStore, type ProcessInfo, type SessionProcessTree } from "
 import { GitSettingsModal, RemoteStatusIndicator } from "@/components/git";
 import { MarketplaceBrowser } from "@/components/marketplace";
 import { McpServerEditorModal } from "@/components/mcp";
-import { ClaudeMdEditorModal } from "@/components/claudemd";
+import { ContextDocEditorModal } from "@/components/claudemd";
 import { CliSettingsModal } from "@/components/terminal/CliSettingsModal";
 import { TerminalSettingsModal } from "@/components/terminal/TerminalSettingsModal";
 import { MaestroSettingsModal, ShortcutsModal } from "@/components/settings";
 import type { McpCustomServer, McpServerConfig } from "@/lib/mcp";
-import { checkClaudeMd, type ClaudeMdStatus } from "@/lib/claudemd";
+import { listContextDocs, readContextDoc, type ContextDoc } from "@/lib/claudemd";
 import { samePath } from "@/lib/path";
 import { OpenCodeIcon } from "@/components/icons/OpenCodeIcon";
 
@@ -491,76 +491,69 @@ function GitRepositorySection() {
 
 /* ── 2. Project Context ── */
 
+const TIER_LABEL: Record<ContextDoc["tier"], string> = {
+  user: "User",
+  project: "Project",
+  local: "Local",
+};
+
+const TIER_ORDER: ContextDoc["tier"][] = ["user", "project", "local"];
+
 function ProjectContextSection() {
-  const [showEditor, setShowEditor] = useState(false);
-  const [status, setStatus] = useState<ClaudeMdStatus | null>(null);
+  const [docs, setDocs] = useState<ContextDoc[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [editing, setEditing] = useState<{ doc: ContextDoc; content: string } | null>(null);
 
   const tabs = useWorkspaceStore((s) => s.tabs);
   const activeTab = tabs.find((t) => t.active);
   const projectPath = activeTab?.projectPath ?? "";
 
-  const checkStatus = useCallback(async () => {
-    if (!projectPath) {
-      setStatus(null);
-      return;
-    }
+  const refresh = useCallback(async () => {
     setIsLoading(true);
     try {
-      const result = await checkClaudeMd(projectPath);
-      setStatus(result);
+      const result = await listContextDocs(projectPath);
+      setDocs(result);
     } catch (err) {
-      console.error("Failed to check CLAUDE.md:", err);
-      setStatus(null);
+      console.error("Failed to list context docs:", err);
+      setDocs([]);
     } finally {
       setIsLoading(false);
     }
   }, [projectPath]);
 
-  // Check status on mount and when project changes
   useEffect(() => {
-    checkStatus();
-  }, [checkStatus]);
+    refresh();
+  }, [refresh]);
 
-  const handleClick = () => {
-    if (projectPath) {
-      setShowEditor(true);
+  const handleOpen = async (doc: ContextDoc) => {
+    try {
+      const content = doc.exists ? await readContextDoc(doc.path) : "";
+      setEditing({ doc, content });
+    } catch (err) {
+      console.error(`Failed to read ${doc.path}:`, err);
+      setEditing({ doc, content: "" });
     }
   };
 
   const handleRefresh = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await checkStatus();
+    await refresh();
   };
 
-  const fileExists = status?.exists ?? false;
+  const grouped = TIER_ORDER.map((tier) => ({
+    tier,
+    items: docs.filter((d) => d.tier === tier),
+  })).filter((g) => g.items.length > 0);
 
-  // No project selected
-  if (!projectPath) {
-    return (
+  const anyExists = docs.some((d) => d.exists);
+
+  return (
+    <>
       <div className={cardClass}>
         <SectionHeader
           icon={FileText}
           label="Project Context"
-          iconColor="text-maestro-muted"
-        />
-        <div className="flex items-center gap-2 px-1 py-1">
-          <span className="text-xs text-maestro-muted">No project selected</span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <div
-        className={`${cardClass} cursor-pointer`}
-        onClick={handleClick}
-      >
-        <SectionHeader
-          icon={FileText}
-          label="Project Context"
-          iconColor={fileExists ? "text-maestro-green" : "text-maestro-orange"}
+          iconColor={anyExists ? "text-maestro-green" : "text-maestro-muted"}
           right={
             <button
               type="button"
@@ -575,37 +568,62 @@ function ProjectContextSection() {
             </button>
           }
         />
-        {isLoading ? (
+
+        {isLoading && docs.length === 0 ? (
           <div className="flex items-center gap-2 px-1 py-1">
             <Loader2 size={13} className="text-maestro-muted shrink-0 animate-spin" />
             <span className="text-xs text-maestro-muted">Checking...</span>
           </div>
-        ) : fileExists ? (
-          <div className="flex items-center gap-2 px-1 py-1">
-            <Check size={13} className="text-maestro-green shrink-0" />
-            <span className="text-xs text-maestro-text">CLAUDE.md</span>
-          </div>
+        ) : grouped.length === 0 ? (
+          <div className="px-1 py-1 text-xs text-maestro-muted">No context docs</div>
         ) : (
-          <>
-            <div className="flex items-center gap-2 px-1 py-1">
-              <AlertTriangle size={13} className="text-maestro-orange shrink-0" />
-              <span className="text-xs text-maestro-text">No CLAUDE.md</span>
-            </div>
-            <div className="pl-7 text-[11px] text-maestro-muted">
-              Click to create project context file
-            </div>
-          </>
+          <div className="space-y-1.5">
+            {grouped.map(({ tier, items }) => (
+              <div key={tier}>
+                <div className="px-1 text-[10px] font-semibold uppercase tracking-wider text-maestro-muted/70">
+                  {TIER_LABEL[tier]}
+                </div>
+                <div className="space-y-0.5">
+                  {items.map((doc) => (
+                    <button
+                      key={doc.path}
+                      type="button"
+                      title={doc.path}
+                      onClick={() => handleOpen(doc)}
+                      className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-maestro-border/40"
+                    >
+                      {doc.exists ? (
+                        <Check size={13} className="text-maestro-green shrink-0" />
+                      ) : (
+                        <AlertTriangle size={13} className="text-maestro-orange/70 shrink-0" />
+                      )}
+                      <span
+                        className={`flex-1 truncate text-xs ${
+                          doc.exists ? "text-maestro-text" : "text-maestro-muted"
+                        }`}
+                      >
+                        {doc.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      {showEditor && projectPath && (
-        <ClaudeMdEditorModal
-          projectPath={projectPath}
-          exists={fileExists}
-          initialContent={status?.content ?? undefined}
-          onClose={() => setShowEditor(false)}
+      {editing && (
+        <ContextDocEditorModal
+          path={editing.doc.path}
+          label={editing.doc.label}
+          tier={editing.doc.tier}
+          kind={editing.doc.kind}
+          exists={editing.doc.exists}
+          initialContent={editing.content}
+          onClose={() => setEditing(null)}
           onSaved={() => {
-            checkStatus();
+            refresh();
           }}
         />
       )}
