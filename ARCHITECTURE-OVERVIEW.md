@@ -32,7 +32,6 @@ maestro/
 │   │   ├── settings/          # Settings modals
 │   │   ├── shared/            # Shared UI components
 │   │   ├── sidebar/           # Sidebar navigation
-│   │   ├── tamagotchi/        # Usage tracker widget
 │   │   └── terminal/          # Terminal grid & panes
 │   ├── hooks/                 # Custom React hooks
 │   ├── lib/                   # Utility libraries
@@ -212,7 +211,6 @@ The codebase forms several natural clusters based on cohesion analysis:
 | `docs/research/01-core-architecture-breakdown.md` | Core systems |
 | `docs/research/02-mcp-marketplace-plugins-breakdown.md` | MCP & plugins |
 | `docs/research/03-git-visualization-actions-breakdown.md` | Git visualization |
-| `docs/specs/tamagotchi-multi-provider.md` | Usage tracker spec |
 | `website/` | Full documentation website |
 
 ---
