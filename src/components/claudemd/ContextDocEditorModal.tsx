@@ -44,11 +44,6 @@ const CLAUDE_USER_TEMPLATE = `# Personal Claude Memory
 -
 `;
 
-const CLAUDE_LOCAL_TEMPLATE = `# Local Project Notes
-
-<!-- Personal, gitignored overrides for this project only. -->
-`;
-
 const AGENTS_TEMPLATE = `# Agents
 
 <!-- See https://agents.md for the format -->
@@ -62,7 +57,6 @@ function defaultTemplate(kind: ContextDocKind, tier: ContextDocTier): string {
   if (kind === "agents") return AGENTS_TEMPLATE;
   if (kind === "readme") return README_TEMPLATE;
   if (tier === "user") return CLAUDE_USER_TEMPLATE;
-  if (tier === "local") return CLAUDE_LOCAL_TEMPLATE;
   return CLAUDE_TEMPLATE;
 }
 
@@ -124,8 +118,7 @@ export function ContextDocEditorModal({
     }
   };
 
-  const tierLabel =
-    tier === "user" ? "User" : tier === "project" ? "Project" : "Local";
+  const tierLabel = tier === "user" ? "User" : "Project";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">

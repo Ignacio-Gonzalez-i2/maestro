@@ -1,5 +1,5 @@
 //! IPC commands for context documents (CLAUDE.md, AGENTS.md, README.md)
-//! at user, project, and local tiers.
+//! at user and project tiers.
 
 use directories::BaseDirs;
 use serde::Serialize;
@@ -18,7 +18,7 @@ pub struct ClaudeMdStatus {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextDoc {
-    /// "user" | "project" | "local"
+    /// "user" | "project"
     pub tier: String,
     /// "claude" | "agents" | "readme"
     pub kind: String,
@@ -30,7 +30,7 @@ pub struct ContextDoc {
 
 /// Allowed basenames for read/write — basename validation is the single
 /// safeguard against the frontend asking us to touch arbitrary files.
-const ALLOWED_BASENAMES: &[&str] = &["CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "README.md"];
+const ALLOWED_BASENAMES: &[&str] = &["CLAUDE.md", "AGENTS.md", "README.md"];
 
 fn validate_basename(path: &Path) -> Result<(), String> {
     let basename = path
@@ -50,8 +50,7 @@ fn validate_basename(path: &Path) -> Result<(), String> {
 ///
 /// Always returns the user-tier entries (anchored at `~/.claude/`).
 /// If `project_path` is non-empty and resolvable, also returns project-tier
-/// (`<repo>/CLAUDE.md`, `AGENTS.md`, `README.md`) and local-tier
-/// (`<repo>/CLAUDE.local.md`) entries.
+/// entries (`<repo>/CLAUDE.md`, `AGENTS.md`, `README.md`).
 #[tauri::command]
 pub async fn list_context_docs(project_path: String) -> Result<Vec<ContextDoc>, String> {
     let mut docs: Vec<ContextDoc> = Vec::new();
@@ -90,16 +89,6 @@ pub async fn list_context_docs(project_path: String) -> Result<Vec<ContextDoc>, 
                 path: p.to_string_lossy().into_owned(),
             });
         }
-
-        // Local tier — gitignored personal override (CLAUDE-only convention)
-        let local_path = canonical.join("CLAUDE.local.md");
-        docs.push(ContextDoc {
-            tier: "local".into(),
-            kind: "claude".into(),
-            label: "CLAUDE.local.md".into(),
-            exists: local_path.exists(),
-            path: local_path.to_string_lossy().into_owned(),
-        });
     }
 
     Ok(docs)
