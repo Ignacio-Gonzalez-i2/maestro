@@ -494,10 +494,9 @@ function GitRepositorySection() {
 const TIER_LABEL: Record<ContextDoc["tier"], string> = {
   user: "User",
   project: "Project",
-  local: "Local",
 };
 
-const TIER_ORDER: ContextDoc["tier"][] = ["user", "project", "local"];
+const TIER_ORDER: ContextDoc["tier"][] = ["user", "project"];
 
 function ProjectContextSection() {
   const [docs, setDocs] = useState<ContextDoc[]>([]);

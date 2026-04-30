@@ -8,7 +8,7 @@ export interface ClaudeMdStatus {
 }
 
 /** A context doc surfaced in the sidebar (CLAUDE.md / AGENTS.md / README.md). */
-export type ContextDocTier = "user" | "project" | "local";
+export type ContextDocTier = "user" | "project";
 export type ContextDocKind = "claude" | "agents" | "readme";
 
 export interface ContextDoc {
@@ -35,7 +35,7 @@ export async function writeClaudeMd(projectPath: string, content: string): Promi
   return invoke<void>("write_claude_md", { projectPath, content });
 }
 
-/** List all context docs (user + project + local) for the active project. */
+/** List all context docs (user + project) for the active project. */
 export async function listContextDocs(projectPath: string): Promise<ContextDoc[]> {
   return invoke<ContextDoc[]>("list_context_docs", { projectPath });
 }
