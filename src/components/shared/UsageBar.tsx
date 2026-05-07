@@ -50,18 +50,18 @@ export function UsageBar() {
 function Bar({ label, percent, reset }: { label: string; percent: number; reset: string }) {
   const pct = Math.min(100, Math.max(0, percent));
   return (
-    <div className="flex flex-col gap-0.5 w-20">
-      <div className="flex items-baseline justify-between gap-1 text-[9px] leading-none">
+    <div className="flex flex-col gap-1 w-28">
+      <div className="flex items-baseline justify-between gap-1 text-[11px] leading-none">
         <span className="text-maestro-muted/70">{label}</span>
-        <span className="text-maestro-muted/50">{Math.round(pct)}%</span>
+        <span className="text-maestro-muted/60">{Math.round(pct)}%</span>
       </div>
-      <div className="h-1 overflow-hidden rounded-full bg-maestro-border/50">
+      <div className="h-2 overflow-hidden rounded-full bg-maestro-border/50">
         <div
           className={`h-full rounded-full transition-all duration-500 ${barColor(pct)}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="text-[8px] leading-none text-maestro-muted/40 truncate">
+      <div className="text-[10px] leading-none text-maestro-muted/50 truncate">
         {reset ? `↻ ${reset}` : " "}
       </div>
     </div>
