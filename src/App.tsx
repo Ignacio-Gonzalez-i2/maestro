@@ -14,8 +14,10 @@ import { useTerminalSettingsStore } from "./stores/useTerminalSettingsStore";
 import { useAppKeyboard } from "./hooks/useAppKeyboard";
 import { useSwipeNavigation } from "./hooks/useSwipeNavigation";
 import { useUpdateStore } from "./stores/useUpdateStore";
+import { usePRTrackingStore } from "./stores/usePRTrackingStore";
 import { initActivityListener, stopActivityListener } from "./stores/useActivityStore";
 import { UpdateNotification } from "./components/update/UpdateNotification";
+import { ToastStack } from "./components/shared/ToastStack";
 import { GitGraphPanel } from "./components/git/GitGraphPanel";
 import type { GitPanelTab } from "./components/git/GitPanelTabs";
 import { BottomBar } from "./components/shared/BottomBar";
@@ -214,6 +216,14 @@ function App() {
   // Git store for commit count and refresh
   const { commits, fetchCommits } = useGitStore();
   const [isRefreshingGit, setIsRefreshingGit] = useState(false);
+
+  // Background PR tracking — toast on new/merged PRs when enabled.
+  const prTracking = usePRTrackingStore((s) => s.tracking);
+  const startPRTracking = usePRTrackingStore((s) => s.start);
+  useEffect(() => {
+    if (!prTracking || !activeRepoPath) return;
+    return startPRTracking(activeRepoPath);
+  }, [prTracking, activeRepoPath, startPRTracking]);
 
   const handleRefreshGit = useCallback(async () => {
     if (!activeRepoPath) return;
@@ -503,6 +513,7 @@ function App() {
       )}
 
       <UpdateNotification />
+      <ToastStack />
     </div>
   );
 }

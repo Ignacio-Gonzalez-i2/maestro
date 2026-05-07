@@ -1,4 +1,5 @@
 import { FolderOpen, Play, Plus } from "lucide-react";
+import { UsageBar } from "./UsageBar";
 
 interface BottomBarProps {
   /** Whether in the grid view (project selected and launched) */
@@ -26,7 +27,7 @@ export function BottomBar({
   const unlaunchedCount = slotCount - launchedCount;
 
   return (
-    <div className="no-select flex h-11 items-center justify-center gap-3 px-4">
+    <div className="no-select relative flex h-11 items-center justify-center gap-3 px-4">
       <button
         type="button"
         onClick={inGridView ? undefined : onSelectDirectory}
@@ -68,6 +69,10 @@ export function BottomBar({
               : `Launch All (${unlaunchedCount})`}
         </button>
       )}
+
+      <div className="absolute right-4 top-1/2 -translate-y-1/2">
+        <UsageBar />
+      </div>
     </div>
   );
 }
