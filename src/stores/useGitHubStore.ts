@@ -138,6 +138,8 @@ interface GitHubState {
   // Pull requests
   pullRequests: PullRequestInfo[];
   prFilter: PrFilterState;
+  /** GitHub search syntax (e.g. "assignee:foo label:bug"). */
+  prSearch: string;
   isPRsLoading: boolean;
   prsError: string | null;
 
@@ -148,6 +150,8 @@ interface GitHubState {
   // Issues
   issues: IssueInfo[];
   issueFilter: IssueFilterState;
+  /** GitHub search syntax (e.g. "assignee:foo label:bug"). */
+  issueSearch: string;
   isIssuesLoading: boolean;
   issuesError: string | null;
 
@@ -167,7 +171,11 @@ interface GitHubState {
 
   // Actions
   checkAuth: (repoPath: string) => Promise<void>;
-  fetchPullRequests: (repoPath: string, state?: PrFilterState) => Promise<void>;
+  fetchPullRequests: (
+    repoPath: string,
+    state?: PrFilterState,
+    search?: string
+  ) => Promise<void>;
   fetchPullRequestDetail: (repoPath: string, number: number) => Promise<void>;
   createPullRequest: (
     repoPath: string,
@@ -189,7 +197,11 @@ interface GitHubState {
     number: number,
     body: string
   ) => Promise<void>;
-  fetchIssues: (repoPath: string, state?: IssueFilterState) => Promise<void>;
+  fetchIssues: (
+    repoPath: string,
+    state?: IssueFilterState,
+    search?: string
+  ) => Promise<void>;
   fetchDiscussions: (repoPath: string) => Promise<void>;
   fetchIssueDetail: (repoPath: string, number: number) => Promise<void>;
   closeIssue: (repoPath: string, number: number) => Promise<void>;
@@ -200,7 +212,9 @@ interface GitHubState {
   commentDiscussion: (repoPath: string, number: number, body: string) => Promise<void>;
   clearSelectedDiscussion: () => void;
   setPrFilter: (filter: PrFilterState) => void;
+  setPrSearch: (search: string) => void;
   setIssueFilter: (filter: IssueFilterState) => void;
+  setIssueSearch: (search: string) => void;
   clearSelectedPR: () => void;
   reset: () => void;
 }
@@ -212,12 +226,14 @@ export const useGitHubStore = create<GitHubState>()((set, get) => ({
   authError: null,
   pullRequests: [],
   prFilter: "open",
+  prSearch: "",
   isPRsLoading: false,
   prsError: null,
   selectedPR: null,
   isLoadingPRDetail: false,
   issues: [],
   issueFilter: "open",
+  issueSearch: "",
   isIssuesLoading: false,
   issuesError: null,
   discussions: [],
@@ -246,14 +262,25 @@ export const useGitHubStore = create<GitHubState>()((set, get) => ({
     }
   },
 
-  fetchPullRequests: async (repoPath: string, state?: PrFilterState) => {
+  fetchPullRequests: async (
+    repoPath: string,
+    state?: PrFilterState,
+    search?: string
+  ) => {
     const filter = state ?? get().prFilter;
-    set({ isPRsLoading: true, prsError: null, prFilter: filter });
+    const searchQuery = search !== undefined ? search : get().prSearch;
+    set({
+      isPRsLoading: true,
+      prsError: null,
+      prFilter: filter,
+      prSearch: searchQuery,
+    });
     try {
       const pullRequests = await invoke<PullRequestInfo[]>("github_list_prs", {
         repoPath,
         state: filter === "all" ? null : filter,
         limit: 50,
+        search: searchQuery.trim() ? searchQuery.trim() : null,
       });
       set({ pullRequests, isPRsLoading: false });
     } catch (err) {
@@ -331,14 +358,25 @@ export const useGitHubStore = create<GitHubState>()((set, get) => ({
     await get().fetchPullRequestDetail(repoPath, number);
   },
 
-  fetchIssues: async (repoPath: string, state?: IssueFilterState) => {
+  fetchIssues: async (
+    repoPath: string,
+    state?: IssueFilterState,
+    search?: string
+  ) => {
     const filter = state ?? get().issueFilter;
-    set({ isIssuesLoading: true, issuesError: null, issueFilter: filter });
+    const searchQuery = search !== undefined ? search : get().issueSearch;
+    set({
+      isIssuesLoading: true,
+      issuesError: null,
+      issueFilter: filter,
+      issueSearch: searchQuery,
+    });
     try {
       const issues = await invoke<IssueInfo[]>("github_list_issues", {
         repoPath,
         state: filter === "all" ? null : filter,
         limit: 50,
+        search: searchQuery.trim() ? searchQuery.trim() : null,
       });
       set({ issues, isIssuesLoading: false });
     } catch (err) {
@@ -440,8 +478,16 @@ export const useGitHubStore = create<GitHubState>()((set, get) => ({
     set({ prFilter: filter });
   },
 
+  setPrSearch: (search: string) => {
+    set({ prSearch: search });
+  },
+
   setIssueFilter: (filter: IssueFilterState) => {
     set({ issueFilter: filter });
+  },
+
+  setIssueSearch: (search: string) => {
+    set({ issueSearch: search });
   },
 
   clearSelectedPR: () => {
@@ -455,12 +501,14 @@ export const useGitHubStore = create<GitHubState>()((set, get) => ({
       authError: null,
       pullRequests: [],
       prFilter: "open",
+      prSearch: "",
       isPRsLoading: false,
       prsError: null,
       selectedPR: null,
       isLoadingPRDetail: false,
       issues: [],
       issueFilter: "open",
+      issueSearch: "",
       isIssuesLoading: false,
       issuesError: null,
       discussions: [],
