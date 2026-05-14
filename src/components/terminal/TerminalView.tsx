@@ -479,7 +479,7 @@ export const TerminalView = memo(function TerminalView({
       // coordinate hit-testing against the [data-slot-id] DOM elements and
       // routes the path to exactly one session.
 
-dataDisposable = term.onData((data) => {
+      dataDisposable = term.onData((data) => {
         if (pendingCompositionData !== null) {
           const correctData = pendingCompositionData;
           pendingCompositionData = null;
