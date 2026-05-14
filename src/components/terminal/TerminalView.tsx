@@ -351,6 +351,9 @@ export const TerminalView = memo(function TerminalView({
     let resizeObserver: ResizeObserver | null = null;
     let pasteHandler: ((e: Event) => void) | null = null;
     let unlistenDragDrop: (() => void) | null = null;
+    // Cancels any pending debounced resize work scheduled by the ResizeObserver
+    // (set inside initTerminal once the observer is wired up).
+    let pendingResizeRafRef: (() => void) | null = null;
 
     // Wait for font to load before initializing terminal
     const initTerminal = async () => {
@@ -658,18 +661,71 @@ export const TerminalView = memo(function TerminalView({
           }
         });
 
+      // Debounce ResizeObserver fits. Rapid window-drag resizes fire dozens of
+      // events per second; running fitAddon.fit() on every tick produces a flood
+      // of term.resize() → resizePty IPC calls that can race with in-flight PTY
+      // output, leaving the terminal buffer reflowed at one size while text is
+      // being written for another. The visible symptom is "mangled output" and
+      // a corrupted scrollback that the user can't recover by scrolling up.
+      //
+      // We do a leading-edge fit (so the first resize lands immediately) plus
+      // a trailing fit when the user stops dragging. Between those we only
+      // re-fit when the computed (cols, rows) actually changed, which avoids
+      // sending no-op resize IPC calls and avoids re-reflowing the xterm buffer
+      // unnecessarily.
+      const RESIZE_DEBOUNCE_MS = 120;
+      let resizeRafId: number | null = null;
+      let resizeTimerId: ReturnType<typeof setTimeout> | null = null;
+      let lastFitCols = -1;
+      let lastFitRows = -1;
+
+      const runFit = () => {
+        if (disposed || !fitAddon || !term) return;
+        try {
+          // Flush any buffered PTY output first so reflow operates on the
+          // final buffer state, not a half-written one.
+          if (writeBuffer.length > 0) flushBuffer();
+          const dims = fitAddon.proposeDimensions();
+          if (!dims || dims.cols <= 0 || dims.rows <= 0) return;
+          if (dims.cols === lastFitCols && dims.rows === lastFitRows) return;
+          lastFitCols = dims.cols;
+          lastFitRows = dims.rows;
+          fitAddon.fit();
+        } catch {
+          // Container may have zero dimensions during layout transitions
+        }
+      };
+
       resizeObserver = new ResizeObserver(() => {
-        requestAnimationFrame(() => {
-          if (!disposed && fitAddon) {
-            try {
-              fitAddon.fit();
-            } catch {
-              // Container may have zero dimensions during layout transitions
-            }
-          }
-        });
+        // Leading edge: if no debounce in flight, fit immediately on the next
+        // animation frame so static layout changes feel responsive.
+        if (resizeTimerId === null && resizeRafId === null) {
+          resizeRafId = requestAnimationFrame(() => {
+            resizeRafId = null;
+            runFit();
+          });
+        }
+        // Trailing edge: always reschedule the trailing fit so the FINAL
+        // dimensions after a drag are applied once.
+        if (resizeTimerId !== null) clearTimeout(resizeTimerId);
+        resizeTimerId = setTimeout(() => {
+          resizeTimerId = null;
+          runFit();
+        }, RESIZE_DEBOUNCE_MS);
       });
       resizeObserver.observe(container);
+
+      // Expose debounce handles so the cleanup function can cancel them.
+      pendingResizeRafRef = () => {
+        if (resizeRafId !== null) {
+          cancelAnimationFrame(resizeRafId);
+          resizeRafId = null;
+        }
+        if (resizeTimerId !== null) {
+          clearTimeout(resizeTimerId);
+          resizeTimerId = null;
+        }
+      };
     };
 
     initTerminal().catch((err) => {
@@ -681,6 +737,7 @@ export const TerminalView = memo(function TerminalView({
     return () => {
       disposed = true;
       cancelPendingFlush();
+      pendingResizeRafRef?.();
       if (activityWorkingTimer) clearTimeout(activityWorkingTimer);
       if (activityIdleTimer) clearTimeout(activityIdleTimer);
       // Flush remaining buffered output before disposal
