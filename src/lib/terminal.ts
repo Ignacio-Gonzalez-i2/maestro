@@ -26,9 +26,98 @@ export async function savePastedImage(data: number[], mediaType: string): Promis
   return invoke<string>("save_pasted_image", { data, mediaType });
 }
 
-/** Writes raw bytes to the PTY stdin of the given session. */
-export async function writeStdin(sessionId: number, data: string): Promise<void> {
-  return invoke("write_stdin", { sessionId, data });
+/**
+ * Maximum payload size per `write_stdin` IPC call.
+ *
+ * Tauri's IPC marshals each invoke arg as JSON. Very large strings can blow
+ * through WebView2's serialization buffers on Windows and trigger silent
+ * truncation when pasting megabytes of text. We split larger payloads into
+ * 64 KiB chunks; the Rust side acquires the writer mutex per chunk so the
+ * sequence still lands in order.
+ *
+ * Picked empirically — large enough that normal keystrokes / typical pastes
+ * stay in a single chunk, small enough to be safe across platforms.
+ */
+const WRITE_STDIN_CHUNK_BYTES = 64 * 1024;
+
+/**
+ * Per-session write queue. Each session's `writeStdin` calls are chained
+ * onto a single promise so chunks never overlap or reorder across async
+ * boundaries. Without this, fire-and-forget writeStdin calls from
+ * xterm.onData and paste handlers could race inside Tauri's command worker
+ * pool and arrive at the PTY out of order, mangling user input.
+ */
+const writeStdinQueues = new Map<number, Promise<void>>();
+
+function chunkString(s: string, maxBytes: number): string[] {
+  // Byte-aware splitting so we never cut a UTF-8 codepoint mid-sequence.
+  // Iterate by codepoint and emit whenever we would exceed maxBytes.
+  const enc = new TextEncoder();
+  const out: string[] = [];
+  let buf = "";
+  let bufBytes = 0;
+  for (const ch of s) {
+    const chBytes = enc.encode(ch).length;
+    if (bufBytes + chBytes > maxBytes && buf.length > 0) {
+      out.push(buf);
+      buf = "";
+      bufBytes = 0;
+    }
+    buf += ch;
+    bufBytes += chBytes;
+  }
+  if (buf.length > 0) out.push(buf);
+  return out;
+}
+
+/**
+ * Writes raw bytes to the PTY stdin of the given session.
+ *
+ * Large payloads (typically clipboard pastes) are split into chunks and
+ * sent sequentially. All writes for a given session are serialized through
+ * a per-session promise queue so chunks always arrive at the PTY in the
+ * order the caller issued them.
+ */
+export function writeStdin(sessionId: number, data: string): Promise<void> {
+  const prev = writeStdinQueues.get(sessionId) ?? Promise.resolve();
+  const next = prev
+    .catch(() => {
+      // Don't let one failed write poison subsequent writes for this session;
+      // upstream callers already log via their own .catch.
+    })
+    .then(async () => {
+      // Fast path: small payload, single invoke.
+      if (data.length === 0) return;
+      // Use string length as a cheap proxy for byte count. UTF-8 codepoints
+      // are at most 4 bytes so the check is conservative but cheap.
+      if (data.length * 4 <= WRITE_STDIN_CHUNK_BYTES) {
+        await invoke("write_stdin", { sessionId, data });
+        return;
+      }
+      const chunks = chunkString(data, WRITE_STDIN_CHUNK_BYTES);
+      for (const chunk of chunks) {
+        await invoke("write_stdin", { sessionId, data: chunk });
+      }
+    });
+  writeStdinQueues.set(sessionId, next);
+  // Drop the queue entry once this write is the tail and has settled, so we
+  // don't hold long promise chains for dead sessions. We attach the cleanup
+  // to a separately-caught branch so it never produces an unhandled rejection
+  // if the write itself rejected — the caller still sees the rejection on
+  // their own `next` reference.
+  next.then(
+    () => {
+      if (writeStdinQueues.get(sessionId) === next) {
+        writeStdinQueues.delete(sessionId);
+      }
+    },
+    () => {
+      if (writeStdinQueues.get(sessionId) === next) {
+        writeStdinQueues.delete(sessionId);
+      }
+    },
+  );
+  return next;
 }
 
 /** Notifies the backend PTY of a terminal dimension change (rows x cols). */
